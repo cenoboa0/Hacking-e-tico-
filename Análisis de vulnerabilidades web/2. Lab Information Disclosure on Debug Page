@@ -1,1 +1,136 @@
 
+# 🔍 Writeup: Information Disclosure on Debug Page
+
+> **Plataforma:** [PortSwigger Web Security Academy](https://portswigger.net/web-security)  
+> **Categoría:** Information Disclosure  
+> **Herramientas:** Kali Linux · Firefox · Burp Suite  
+> **Objetivo:** Encontrar la página de depuración expuesta y extraer el valor de `SECRET_KEY`
+
+---
+
+## 🧭 Contexto
+
+Las páginas de depuración (*debug pages*) suelen exponerse accidentalmente en entornos de producción cuando los frameworks web (Django, Flask, Symfony, etc.) se dejan en **modo desarrollo**. Estas páginas pueden revelar variables de entorno del servidor, stack traces, configuraciones internas y credenciales sensibles.
+
+---
+
+## ⚙️ Paso 1 — Configurar la captura en Burp Suite
+
+1. Abre **Burp Suite** y verifica que el proxy está activo.  
+   Asegúrate de que el botón de intercepción esté en **`Intercept is off`** para permitir la navegación inicial sin interrupciones.
+
+2. En **Firefox**, abre la pestaña del laboratorio.
+
+3. Navega por la aplicación de forma normal: haz clic en un par de productos (por ejemplo, *"View details"* en cualquier artículo de la tienda).  
+   Esto generará tráfico registrado en el historial de Burp Suite.
+
+---
+
+## 🕵️ Paso 2 — Identificar la ruta de depuración
+
+Las páginas de depuración suelen exponerse de dos formas:
+
+- A través de **enlaces directos u comentarios olvidados** en el HTML.
+- Provocando un **error en la aplicación** con datos inválidos.
+
+### Procedimiento:
+
+1. En Burp Suite, ve a:  
+   **`Proxy`** → **`HTTP history`**
+
+2. Examina las peticiones generadas al navegar por los productos. Identificarás URLs con la forma:
+   ```
+   GET /product?productId=1 HTTP/2
+   ```
+
+3. Selecciona una de estas peticiones y envíala al **Repeater**:
+   ```
+   Clic derecho → Send to Repeater   (o Ctrl + R)
+   ```
+
+4. En el Repeater, **modifica la petición** para apuntar a la ruta de depuración conocida:
+   ```
+   GET /cgi-bin/phpinfo.php HTTP/2
+   ```
+
+5. Haz clic en **`Send`**.
+
+---
+
+## 🔬 Paso 3 — Analizar la respuesta (Debug Page)
+
+1. Observa la pestaña **`Response`** en el Repeater.
+
+   Si la aplicación está corriendo en modo de desarrollo, en lugar del diseño normal de la tienda verás una **página de depuración detallada** que puede contener:
+   - Stack Traces
+   - Volcado de variables del entorno
+   - Configuración interna del framework
+
+2. En la barra de búsqueda de la respuesta (parte inferior del panel), busca el término:
+   ```
+   SECRET_KEY
+   ```
+   o simplemente:
+   ```
+   SECRET
+   ```
+
+3. Los entornos de depuración listan todas las **variables de entorno del sistema operativo del servidor**. Allí encontrarás el parámetro con su valor alfanumérico:
+
+   ```
+   SECRET_KEY = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   ```
+
+   > 💡 **Tip:** También puedes usar `Ctrl + F` dentro del panel de respuesta de Burp Suite para buscar rápidamente el término.
+
+---
+
+## 🏁 Paso 4 — Entregar la solución
+
+1. **Copia** el valor de `SECRET_KEY` encontrado en la página de depuración.
+
+2. En Firefox, regresa a la página principal del laboratorio y haz clic en el botón **`Submit solution`** (parte superior de la página).
+
+3. **Pega** el valor de la clave y haz clic en **`OK`** para resolver el laboratorio.
+
+---
+
+## 📋 Resumen del Flujo de Ataque
+
+```
+Navegación normal
+      │
+      ▼
+Burp Suite — HTTP History
+      │
+      ▼
+Identificar petición  GET /product?productId=1
+      │
+      ▼
+Enviar al Repeater → Modificar ruta → GET /cgi-bin/phpinfo.php
+      │
+      ▼
+Respuesta: Debug Page con variables de entorno
+      │
+      ▼
+Buscar SECRET_KEY → Copiar valor → Submit solution ✅
+```
+
+---
+
+## 🛡️ Mitigación
+
+| Problema | Solución |
+|---|---|
+| Framework en modo `DEBUG=True` | Deshabilitar el modo debug en producción (`DEBUG=False`) |
+| Ruta `/cgi-bin/` expuesta | Restringir o eliminar rutas de diagnóstico en producción |
+| Variables de entorno visibles | Nunca exponer variables de entorno en respuestas HTTP |
+| Páginas de error detalladas | Implementar páginas de error genéricas (`404`, `500`) |
+
+---
+
+## 🔗 Referencias
+
+- [PortSwigger: Information Disclosure](https://portswigger.net/web-security/information-disclosure)
+- [CWE-215: Insertion of Sensitive Information Into Debugging Code](https://cwe.mitre.org/data/definitions/215.html)
+- [OWASP: Improper Error Handling](https://owasp.org/www-community/Improper_Error_Handling)
